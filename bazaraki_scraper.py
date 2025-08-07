@@ -134,13 +134,61 @@ class BazarakiScraper:
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--allow-running-insecure-content")
+        chrome_options.add_argument("--disable-extensions")
+        
+        # Windows-specific Chrome binary paths
+        if sys.platform == "win32":
+            chrome_paths = [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+                os.path.expandvars(r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe"),
+                os.path.expandvars(r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe")
+            ]
+            
+            for chrome_path in chrome_paths:
+                if os.path.exists(chrome_path):
+                    chrome_options.binary_location = chrome_path
+                    break
         
         try:
-            self.driver = webdriver.Chrome(options=chrome_options)
-            logging.info("Chrome WebDriver initialized successfully")
+            # Try webdriver manager first (automatic)
+            try:
+                from webdriver_manager.chrome import ChromeDriverManager
+                from selenium.webdriver.chrome.service import Service
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                logging.info("Chrome WebDriver initialized with webdriver-manager")
+            except Exception as e1:
+                logging.warning(f"Webdriver-manager failed: {e1}, trying default Chrome")
+                # Fallback to default Chrome
+                self.driver = webdriver.Chrome(options=chrome_options)
+                logging.info("Chrome WebDriver initialized with system Chrome")
+                
         except Exception as e:
             logging.error(f"Failed to initialize Chrome WebDriver: {e}")
-            raise
+            
+            # Try Edge as fallback on Windows
+            if sys.platform == "win32":
+                try:
+                    from selenium.webdriver import Edge
+                    from selenium.webdriver.edge.options import Options as EdgeOptions
+                    
+                    edge_options = EdgeOptions()
+                    if headless:
+                        edge_options.add_argument("--headless")
+                    edge_options.add_argument("--no-sandbox")
+                    edge_options.add_argument("--disable-dev-shm-usage")
+                    
+                    self.driver = Edge(options=edge_options)
+                    logging.info("Fallback to Edge WebDriver successful")
+                    return
+                except Exception as e2:
+                    logging.error(f"Edge fallback also failed: {e2}")
+            
+            raise Exception(f"Could not initialize any WebDriver. Chrome error: {e}")
     
     def setup_database(self):
         """Setup SQLite database for storing listings"""
